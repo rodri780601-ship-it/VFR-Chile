@@ -879,9 +879,9 @@ const NAV = {
     const e0 = (r[0].e || 0) / 3.28084;
     this.simT = setInterval(() => {
       t += 1000 * 10; // 10x
-      const a = r[leg], b = r[leg + 1]; if (!b) { this.stop(); toast('Simulación terminada'); return; }
+      const a = r[leg], b = r[leg + 1]; if (!b) { endNavigation(); toast('Simulación terminada'); return; }
       const L = distNM(a, b); f += (spd * 10 / 3600) / L;
-      if (f >= 1) { f = 0; leg++; if (!r[leg + 1]) { this.stop(); toast('Simulación terminada'); return; } }
+      if (f >= 1) { f = 0; leg++; if (!r[leg + 1]) { endNavigation(); toast('Simulación terminada'); return; } }
       const p = interp(r[leg], r[leg + 1], f), total = this.track.length;
       const alt = Math.min(crz, e0 + total * 50);
       this.onFix({ la: p.la, lo: p.lo, alt, spd: spd / 1.94384, hdg: bearing(r[leg], r[leg + 1]), acc: 5, t });
@@ -897,8 +897,28 @@ function directTo(p) {
   if (!NAV.pos) { NAV.start(); toast('Esperando GPS para el directo…'); const iv = setInterval(() => { if (NAV.pos) { clearInterval(iv); directTo(p); } }, 1000); setTimeout(() => clearInterval(iv), 30000); return; }
   NAV.direct = r; NAV.directFrom = { ...NAV.pos, id: 'POS', name: 'Posición' }; showView('v-vuelo'); toast('Directo a ' + r.id); renderNav();
 }
-$('#nav-toggle').onclick = () => NAV.on ? NAV.stop() : NAV.start();
-$('#nav-sim').onclick = () => NAV.simulate();
+/* Borra la ruta del plan, del mapa y de la navegación (conserva avión, crucero y hora de salida) */
+function clearRoute() {
+  const P = S.plan; P.dep = null; P.wps = []; P.dest = null; P.alt = null; P.winds = []; S.terr = null;
+  NAV.route = []; NAV.idx = 1; NAV.direct = null; NAV.directFrom = null;
+  if (MAP.trail) MAP.trail.setLatLngs([]);
+  if (MAP.map) MAP.map.closePopup();
+  planChanged(); renderNav();
+}
+/* Detener la navegación quita también la ruta del mapa */
+function endNavigation() { const had = routeValid(); NAV.stop(); clearRoute(); if (had) toast('Navegación detenida · ruta eliminada'); }
+$('#nav-toggle').onclick = () => {
+  if (!NAV.on) return NAV.start();
+  if (routeValid() && !NAV.sim && !confirm('¿Detener la navegación? También se quitará la ruta del mapa.')) return;
+  endNavigation();
+};
+$('#nav-sim').onclick = () => NAV.sim ? endNavigation() : NAV.simulate();
+$('#map-clear').onclick = () => {
+  if (!routeValid() && !S.plan.dep && !S.plan.dest && !S.plan.wps.length) return toast('No hay ruta que borrar');
+  if (!confirm('¿Borrar la ruta del mapa y del plan?')) return;
+  if (NAV.on) NAV.stop();
+  clearRoute(); toast('Ruta eliminada');
+};
 $('#nav-direct').onclick = () => pickAerodrome('Directo a…', p => p && directTo(p));
 $('#nav-nearest').onclick = () => {
   if (!NAV.pos) { NAV.start(); return toast('Esperando posición GPS…'); }
