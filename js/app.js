@@ -83,7 +83,7 @@ const LS = 'vfrchile.v1';
 const DEF = {
   ac: { reg: '', type: '', tas: 100, ff: 30, unit: 'L', fuel: 140, taxi: 4, res: 45, mvar: 0 },
   plan: { dep: null, wps: [], dest: null, alt: null, cruise: 4500, depTime: '', winds: [] },
-  saved: [], wxAd: 'SCEL', map: { layer: 'osm', H: true, view: null }, ok: false
+  saved: [], wxAd: 'SCEL', map: { layer: 'osm', H: true, f: { pub: true, pvt: true, mil: true, mix: true, hel: true }, view: null }, ok: false
 };
 let S = load();
 function load() {
@@ -546,10 +546,11 @@ const MAP = {
     setTimeout(() => { const h = $('.map-hint'); if (h) h.style.opacity = 0; }, 6000);
   },
   color(a) { return a.x ? '#000' : a.t === 'H' ? '#a78bfa' : a.t === 'M' ? '#ef4444' : a.p ? '#22c55e' : '#94a3b8'; },
+  cat(a) { return a.t === 'H' ? 'hel' : a.t === 'M' ? 'mil' : a.t === 'X' ? 'mix' : a.p ? 'pub' : 'pvt'; },
   drawAds() {
     if (!this.map) return; this.adLayer.clearLayers();
     AD.forEach(a => {
-      if (a.la == null || (a.t === 'H' && !S.map.H)) return;
+      if (a.la == null || !S.map.f[this.cat(a)]) return;
       const mk = L.circleMarker([a.la, a.lo], { radius: a.t === 'H' ? 4.5 : (a.p ? 7 : 5.5), color: a.x ? '#ff6b6b' : '#0b1320', weight: a.x ? 2 : 1.2, fillColor: this.color(a), fillOpacity: .95 });
       mk.bindTooltip(a.i, { direction: 'top', offset: [0, -6] });
       mk.bindPopup(() => this.popup(a), { maxWidth: 280 });
@@ -619,11 +620,16 @@ $('#map-metar').onclick = () => MAP.metarArea();
 $('#map-layers').onclick = () => {
   const body = openModal('Mapa', `<div class="field"><label>Mapa base</label><select id="ly-base">
       <option value="osm">OpenStreetMap</option><option value="topo">Topográfico (OpenTopoMap)</option><option value="sat">Satélite (Esri)</option></select></div>
-    <label class="chk"><input id="ly-h" type="checkbox"> Mostrar helipuertos</label>
+    <div class="field"><label>Tipo de aeródromo a mostrar</label>
+      <label class="chk"><input data-f="pub" type="checkbox"> Públicos</label>
+      <label class="chk"><input data-f="pvt" type="checkbox"> Privados</label>
+      <label class="chk"><input data-f="mil" type="checkbox"> Militares</label>
+      <label class="chk"><input data-f="mix" type="checkbox"> Mixtos</label>
+      <label class="chk"><input data-f="hel" type="checkbox"> Helipuertos</label></div>
     <p class="note">Las teselas que ves quedan guardadas en el teléfono y siguen disponibles sin conexión. No son cartas aeronáuticas: no muestran espacios aéreos ni zonas restringidas.</p>`);
-  $('#ly-base', body).value = S.map.layer; $('#ly-h', body).checked = S.map.H;
+  $('#ly-base', body).value = S.map.layer;
+  body.querySelectorAll('[data-f]').forEach(cb => { cb.checked = S.map.f[cb.dataset.f] !== false; cb.onchange = () => { S.map.f[cb.dataset.f] = cb.checked; save(); MAP.drawAds(); }; });
   $('#ly-base', body).onchange = e => { Object.values(MAP.base).forEach(l => MAP.map.removeLayer(l)); S.map.layer = e.target.value; MAP.base[S.map.layer].addTo(MAP.map); save(); };
-  $('#ly-h', body).onchange = e => { S.map.H = e.target.checked; save(); MAP.drawAds(); };
 };
 
 /* ------------------------------------------------------------------ AERÓDROMOS */
