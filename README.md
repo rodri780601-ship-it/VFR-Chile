@@ -40,6 +40,16 @@ icons/, screenshots/    Íconos y capturas para la tienda
 
 Los datos provienen del servicio del Mapa Interactivo del IFIS (`https://aipchile.dgac.gob.cl/api/aerodrome`). Para actualizarlos, regenera `data/aerodromos.js` con el mismo formato y sube el cambio. Cambia también `VERSION` en `sw.js` para que los teléfonos descarguen la versión nueva.
 
+## Espacio aéreo y cartas (actualización automática)
+
+`data/espacio-aereo.js` contiene las zonas prohibidas, restringidas y peligrosas (AIP Chile ENR 5.1) y los enlaces a las cartas VAC y rutas visuales (ENR 7). Lo genera `tools/update_airspace.py` leyendo los PDF y las páginas índice de `aipchile.dgac.gob.cl`; la DGAC no publica estos datos en formato estructurado.
+
+- El workflow `.github/workflows/actualizar-aip.yml` lo ejecuta a diario (y a mano desde *Actions → Run workflow*). Si algo cambió, hace commit en `main`.
+- La app pide ese archivo a la red primero (`sw.js`), así que los cambios llegan sin subir la versión del service worker.
+- Si el formato del PDF cambia tanto que se interpretan pocas zonas, el script falla y no toca los datos existentes.
+- Las zonas definidas con arcos, radiales o coordenadas con errores se listan, pero no se dibujan ni se comparan con la ruta (geometría `null`).
+- Ejecución local: `pip install -r tools/requirements.txt && python tools/update_airspace.py`.
+
 ## Fuentes de datos
 
 - Aeródromos: IFIS / AIP Chile, Dirección General de Aeronáutica Civil.

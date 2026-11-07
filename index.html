@@ -55,6 +55,9 @@
         <span><i class="dot c-pvt"></i>Privado</span>
         <span><i class="dot c-mil"></i>Militar</span>
         <span><i class="dot c-hlp"></i>Helipuerto</span>
+        <span><i class="sq z-P"></i>Prohibida</span>
+        <span><i class="sq z-R"></i>Restringida</span>
+        <span><i class="sq z-D"></i>Peligrosa</span>
       </div>
       <div class="map-hint">Mantén presionado el mapa para crear un punto de ruta</div>
     </section>
@@ -154,6 +157,7 @@
         <button id="nav-nearest" class="btn warn" type="button">Más cercanos</button>
       </div>
       <div id="nav-target" class="nav-target">Sin destino activo</div>
+      <div id="nav-zone"></div>
       <div class="instr-wrap">
         <svg id="hsi" viewBox="-110 -110 220 220" aria-label="Indicador de rumbo"></svg>
       </div>
@@ -218,6 +222,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
   <script src="data/aerodromos.js"></script>
+  <script src="data/espacio-aereo.js" onerror="window.ESPACIO_AEREO=null"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

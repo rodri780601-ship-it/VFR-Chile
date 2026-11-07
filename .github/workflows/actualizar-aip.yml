@@ -1,0 +1,49 @@
+name: Actualizar espacio aéreo (AIP Chile)
+
+# Revisa a diario las publicaciones de la DGAC (AIP Chile, ENR 5.1 y cartas).
+# Si hay cambios, regenera data/espacio-aereo.js y lo sube a main: la app los toma
+# la próxima vez que se abre con conexión (el service worker pide ese archivo a la red primero).
+on:
+  schedule:
+    - cron: "17 9 * * *"   # todos los días 09:17 UTC
+  workflow_dispatch: {}      # también se puede lanzar a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-aip
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - run: pip install -r tools/requirements.txt
+
+      # Si el formato del AIP cambia y no se puede interpretar, el script falla
+      # y NO se modifica nada (la app sigue con los últimos datos buenos).
+      - name: Regenerar data/espacio-aereo.js
+        run: python tools/update_airspace.py
+
+      - name: Publicar si cambió
+        run: |
+          if git diff --quiet -- data/espacio-aereo.js; then
+            echo "Sin cambios en el AIP."
+            exit 0
+          fi
+          FECHA=$(grep -o '"fecha":"[^"]*"' data/espacio-aereo.js | head -1 | cut -d'"' -f4)
+          AMDT=$(grep -o '"amdt":[0-9]*' data/espacio-aereo.js | head -1 | cut -d: -f2)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/espacio-aereo.js
+          git commit -m "AIP Chile: actualiza zonas P/R/D y cartas (AMDT ${AMDT}, ${FECHA})"
+          git push

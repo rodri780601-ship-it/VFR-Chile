@@ -1,6 +1,6 @@
 /* Service worker de VFR Chile: app disponible sin conexión + caché de teselas de mapa vistas. */
-const VERSION = 'vfrchile-v1.0.4';
-const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'data/aerodromos.js', 'manifest.webmanifest',
+const VERSION = 'vfrchile-v1.1.0';
+const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'data/aerodromos.js', 'data/espacio-aereo.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
 const CDN = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 const TILES = 'vfrchile-tiles', TILE_MAX = 3000;
@@ -40,6 +40,15 @@ self.addEventListener('fetch', e => {
         if (r.ok && r.type === 'cors') { c.put(req, r.clone()); if (Math.random() < 0.02) trimTiles(); }
         return r;
       } catch (err) { return new Response('', { status: 504 }); }
+    })());
+    return;
+  }
+  // Espacio aéreo (AIP): red primero para tomar siempre la última publicación; sin conexión, la última copia
+  if (url.origin === location.origin && url.pathname.endsWith('/data/espacio-aereo.js')) {
+    e.respondWith((async () => {
+      const c = await caches.open(VERSION);
+      try { const r = await fetch(req, { cache: 'no-cache' }); if (r.ok) c.put(req, r.clone()); return r; }
+      catch (err) { return (await c.match(req, { ignoreSearch: true })) || new Response('', { status: 504 }); }
     })());
     return;
   }

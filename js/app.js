@@ -8,6 +8,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const AD = (window.AERODROMOS || []).filter(a => a.i);
 const ADX = Object.fromEntries(AD.map(a => [a.i, a]));
+const EA = window.ESPACIO_AEREO || null; /* zonas P/R/D y cartas del AIP (data/espacio-aereo.js) */
 const R_NM = 3440.065, D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const TIPO = { C: 'Civil', M: 'Militar', X: 'Mixto', H: 'Helipuerto' };
 const REGIONES = ['Arica y Parinacota', 'Tarapacá', 'Antofagasta', 'Atacama', 'Coquimbo', 'Valparaíso', 'Metropolitana', "O'Higgins", 'Maule', 'Ñuble', 'Biobío', 'La Araucanía', 'Los Ríos', 'Los Lagos', 'Aysén', 'Magallanes', 'Heliplataformas (offshore)'];
@@ -83,7 +84,7 @@ const LS = 'vfrchile.v1';
 const DEF = {
   ac: { reg: '', type: '', tas: 100, ff: 30, unit: 'L', fuel: 140, taxi: 4, res: 45, mvar: 0 },
   plan: { dep: null, wps: [], dest: null, alt: null, cruise: 4500, depTime: '', winds: [] },
-  saved: [], wxAd: 'SCEL', map: { layer: 'osm', H: true, f: { pub: true, pvt: true, mil: true, mix: true, hel: true }, view: null }, ok: false
+  saved: [], wxAd: 'SCEL', map: { layer: 'osm', H: true, f: { pub: true, pvt: true, mil: true, mix: true, hel: true }, z: { P: true, R: true, D: true }, view: null }, ok: false
 };
 let S = load();
 function load() {
@@ -198,6 +199,7 @@ function showAd(icao) {
       ${a.m ? '<button class="btn" data-a="wx" type="button">METAR / TAF</button>' : '<button class="btn" data-a="fc" type="button">Pronóstico</button>'}
       <button class="btn warn" data-a="direct" type="button">Directo a</button>
       ${a.u ? `<a class="btn" href="${esc(a.u)}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;color:inherit">Ficha AIP (PDF)</a>` : ''}
+      ${EA && EA.cartas && EA.cartas.vac[a.i] ? `<a class="btn" href="${esc(EA.cartas.vac[a.i])}" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;color:inherit">Carta visual VAC (PDF)</a>` : ''}
     </div>
     <p class="note">Datos AIP al ${esc(window.AD_FECHA || '')}. Revisa NOTAM y la publicación vigente antes de operar.</p>`);
   body.onclick = e => {
@@ -351,6 +353,7 @@ function renderNavlog() {
   c.pts.forEach(p => { if (p.ad && p.ad.x) W.push(['bad', `${p.id} figura como CERRADO en el AIP.`]); if (p.ad && !p.ad.p) W.push(['warn', `${p.id} es de uso privado: requiere autorización del administrador${p.ad.ad ? ' (' + p.ad.ad + ')' : ''}.`]); });
   const cr = +S.plan.cruise || 0, maxE = Math.max(...c.pts.map(p => p.e || 0));
   if (cr && cr < maxE + 1000) W.push(['warn', `La altitud de crucero (${num(cr)} ft) es baja respecto de la elevación de los aeródromos de la ruta (${num(maxE)} ft). Revisa el terreno en la carta.`]);
+  zoneWarnings(c.pts, cr).forEach(w => W.push(w));
   $('#warnings').innerHTML = W.map(([k, t]) => `<div class="alert ${k}">${esc(t)}</div>`).join('');
   renderTerr(c);
 }
@@ -587,9 +590,60 @@ async function loadForecast() {
   } catch (e) { out.innerHTML = '<div class="alert warn">No se pudo obtener el pronóstico. Revisa tu conexión.</div>'; }
 }
 
+/* ------------------------------------------------------------------ ESPACIO AÉREO (AIP ENR 5.1) */
+/* data/espacio-aereo.js lo genera tools/update_airspace.py (GitHub Actions) cada vez que la DGAC publica cambios */
+const ZNOM = { P: 'Prohibida', R: 'Restringida', D: 'Peligrosa' };
+const ZCOL = { P: '#ef4444', R: '#f97316', D: '#eab308' };
+const ZN = ((EA && EA.zonas) || []).map(z => {
+  if (z.g) { const r = z.g[0]; z.bb = [Math.min(...r.map(p => p[0])), Math.min(...r.map(p => p[1])), Math.max(...r.map(p => p[0])), Math.max(...r.map(p => p[1]))]; }
+  return z;
+});
+function inPoly(la, lo, ring) {
+  let c = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [yi, xi] = ring[i], [yj, xj] = ring[j];
+    if ((xi > lo) !== (xj > lo) && la < (yj - yi) * (lo - xi) / (xj - xi) + yi) c = !c;
+  }
+  return c;
+}
+function zonesAt(p) { return ZN.filter(z => z.g && p.la >= z.bb[0] && p.la <= z.bb[2] && p.lo >= z.bb[1] && p.lo <= z.bb[3] && inPoly(p.la, p.lo, z.g[0])); }
+function zLimits(z) {
+  if (!z.lim || !z.lim.length) return 'ver AIP';
+  return z.multi ? 'varios sectores: ' + z.lim.join(' / ') : `${z.lim[0]} (sup.) · ${z.lim[1] || 'GND'} (inf.)`;
+}
+/* ¿está la altitud (ft MSL) dentro de los límites verticales de la zona? null = no se puede saber (AGL o sin datos) */
+function zVert(z, ft) {
+  if (!z.lim || z.lo == null || z.hi == null) return null;
+  if (z.agl) return null;
+  return ft >= z.lo && ft <= z.hi;
+}
+function zonesOnRoute(pts) {
+  const hit = new Map();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], n = Math.min(4000, Math.max(1, Math.ceil(distNM(a, b) / 0.1)));
+    for (let k = 0; k <= n; k++) zonesAt(interp(a, b, k / n)).forEach(z => hit.has(z.id) || hit.set(z.id, z));
+  }
+  return [...hit.values()];
+}
+function zoneWarnings(pts, cr) {
+  const W = [];
+  zonesOnRoute(pts).forEach(z => {
+    const inside = cr ? zVert(z, cr) : null, tipo = `${z.id} (${ZNOM[z.k]}${z.n ? ' · ' + z.n : ''})`;
+    const lim = zLimits(z);
+    if (inside === false) W.push(['ok', `La ruta pasa por ${tipo}, pero tu crucero (${num(cr)} ft) queda fuera de sus límites verticales: ${lim}. Confirma horario y NOTAM.`]);
+    else W.push([z.k === 'P' ? 'bad' : 'warn', `La ruta cruza ${tipo}. Límites: ${lim}.${inside ? ` Tu crucero (${num(cr)} ft) está DENTRO de la zona.` : ' Los límites dependen del terreno (AGL) o no se pudieron determinar: revisa el AIP.'} ${z.k === 'P' ? 'Vuelo prohibido sin autorización.' : 'Requiere autorización/coordinación según el AIP.'}`]);
+  });
+  /* zonas que no se pudieron interpretar (arcos, radiales, coordenadas con errores) en las FIR de la ruta */
+  const FIR = { ANTOFAGASTA: 'SCFZ', SANTIAGO: 'SCEZ', 'PUERTO MONTT': 'SCTZ', 'PUNTA ARENAS': 'SCCZ' };
+  const firs = new Set(pts.map(p => p.ad && p.ad.f).filter(Boolean));
+  const sin = ZN.filter(z => !z.g && (!FIR[z.fir] || firs.has(FIR[z.fir]))).map(z => z.id);
+  if (sin.length) W.push(['warn', `No se pudo dibujar ni verificar contra la ruta: ${sin.join(', ')} (geometría no interpretable automáticamente). Revisa el ENR 5.1 del AIP.`]);
+  return W;
+}
+
 /* ------------------------------------------------------------------ MAPA */
 const MAP = {
-  map: null, adLayer: null, routeLayer: null, metarLayer: null, own: null, trail: null, base: {},
+  map: null, zoneLayer: null, adLayer: null, routeLayer: null, metarLayer: null, own: null, trail: null, base: {},
   init() {
     if (!window.L) { $('#map').innerHTML = '<p class="muted" style="padding:20px">No se pudo cargar el mapa (sin conexión la primera vez). Las demás funciones siguen disponibles.</p>'; return; }
     const v = S.map.view || { c: [-33.45, -70.66], z: 7 };
@@ -601,9 +655,10 @@ const MAP = {
       sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 18, crossOrigin: true, attribution: 'Imágenes © Esri' })
     };
     (this.base[S.map.layer] || this.base.osm).addTo(m);
+    this.zoneLayer = L.layerGroup().addTo(m);
     this.adLayer = L.layerGroup().addTo(m); this.routeLayer = L.layerGroup().addTo(m); this.metarLayer = L.layerGroup().addTo(m);
     this.trail = L.polyline([], { color: '#5fd3ff', weight: 3, opacity: .8 }).addTo(m);
-    this.drawAds(); this.drawRoute();
+    this.drawZones(); this.drawAds(); this.drawRoute();
     m.on('moveend', () => { S.map.view = { c: [m.getCenter().lat, m.getCenter().lng], z: m.getZoom() }; save(); });
     m.on('contextmenu', e => this.customPoint(e.latlng));
     m.on('popupopen', e => {
@@ -626,6 +681,22 @@ const MAP = {
       mk.bindPopup(() => this.popup(a), { maxWidth: 280 });
       mk.addTo(this.adLayer);
     });
+  },
+  drawZones() {
+    if (!this.map) return; this.zoneLayer.clearLayers();
+    ZN.forEach(z => {
+      if (!z.g || !S.map.z[z.k]) return;
+      const c = ZCOL[z.k];
+      L.polygon(z.g[0], { color: c, weight: 1.8, fillColor: c, fillOpacity: .16, dashArray: z.k === 'D' ? '6 4' : null })
+        .bindTooltip(z.id, { sticky: true }).bindPopup(() => this.zonePopup(z), { maxWidth: 300 }).addTo(this.zoneLayer);
+    });
+  },
+  zonePopup(z) {
+    return `<div class="pop"><h4><i class="sq z-${z.k}"></i>${esc(z.id)} · ${ZNOM[z.k]}</h4>
+      <div class="muted">${z.n ? esc(z.n) + '<br>' : ''}FIR ${esc(z.fir || '—')}<br><b>Límites:</b> ${esc(zLimits(z))}${z.agl ? ' <i>(AGL: depende del terreno)</i>' : ''}
+      ${z.obs ? '<br><b>Observaciones:</b> ' + esc(z.obs) : ''}</div>
+      <div class="muted" style="margin-top:6px">Fuente: AIP Chile ENR 5.1, AMDT ${esc(EA.amdt)} (${esc(EA.fecha)}). Verifica horarios y NOTAM.</div>
+      <div class="pbtns"><a href="${esc(EA.fuente)}" target="_blank" rel="noopener">Abrir ENR 5.1 (PDF)</a></div></div>`;
   },
   popup(a) {
     const p = esc(JSON.stringify({ i: a.i }));
@@ -707,11 +778,39 @@ $('#map-layers').onclick = () => {
       <label class="chk"><input data-f="mil" type="checkbox"> Militares</label>
       <label class="chk"><input data-f="mix" type="checkbox"> Mixtos</label>
       <label class="chk"><input data-f="hel" type="checkbox"> Helipuertos</label></div>
+    <div class="field"><label>Zonas del espacio aéreo (AIP ENR 5.1)</label>
+      <label class="chk"><input data-z="P" type="checkbox"> <i class="sq z-P"></i> Prohibidas (P)</label>
+      <label class="chk"><input data-z="R" type="checkbox"> <i class="sq z-R"></i> Restringidas (R)</label>
+      <label class="chk"><input data-z="D" type="checkbox"> <i class="sq z-D"></i> Peligrosas / instrucción (D)</label>
+      ${EA ? `<p class="note">AIP Chile · AMDT ${esc(EA.amdt)} · ${esc(EA.fecha)} · ${ZN.filter(z => z.g).length} de ${ZN.length} zonas dibujadas. Se actualiza automáticamente cuando la DGAC publica cambios.</p>
+      <button id="ly-zlist" class="btn small" type="button">Lista de zonas y cartas del AIP</button>` : '<p class="note">Datos de espacio aéreo no disponibles.</p>'}</div>
     <p class="note">Las teselas que ves quedan guardadas en el teléfono y siguen disponibles sin conexión. No son cartas aeronáuticas: no muestran espacios aéreos ni zonas restringidas.</p>`);
   $('#ly-base', body).value = S.map.layer;
+  body.querySelectorAll('[data-z]').forEach(cb => { cb.checked = S.map.z[cb.dataset.z] !== false; cb.onchange = () => { S.map.z[cb.dataset.z] = cb.checked; save(); MAP.drawZones(); }; });
+  const zl = $('#ly-zlist', body); if (zl) zl.onclick = showZoneList;
   body.querySelectorAll('[data-f]').forEach(cb => { cb.checked = S.map.f[cb.dataset.f] !== false; cb.onchange = () => { S.map.f[cb.dataset.f] = cb.checked; save(); MAP.drawAds(); }; });
   $('#ly-base', body).onchange = e => { Object.values(MAP.base).forEach(l => MAP.map.removeLayer(l)); S.map.layer = e.target.value; MAP.base[S.map.layer].addTo(MAP.map); save(); };
 };
+
+function showZoneList() {
+  const lnk = (n, u) => `<a class="item" href="${esc(u)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><span class="tx"><b>${esc(n)}</b></span><span class="rt">PDF</span></a>`;
+  const C = EA.cartas || { rutas: [], enr: [] }, O = EA.otras || {};
+  const vacio = k => O[k] && O[k].vacio;
+  const body = openModal('Espacio aéreo y cartas del AIP', `
+    <p class="note">AIP Chile (DGAC) · ENR 5.1 · AMDT ${esc(EA.amdt)} · ${esc(EA.fecha)}. Datos interpretados automáticamente del PDF oficial: <b>contrástalos siempre con el AIP vigente y los NOTAM</b>.</p>
+    <h3>Cartas</h3><div class="list">${C.rutas.map(r => lnk(r.n, r.u)).join('')}${C.enr.map(r => lnk(r.n, r.u)).join('')}${lnk('ENR 5.1 Zonas P, R, D', EA.fuente)}</div>
+    <p class="note">Cartas de aproximación visual (VAC): botón "Carta visual VAC" en la ficha de cada aeródromo que la tiene publicada (${Object.keys((EA.cartas || {}).vac || {}).length} aeródromos).</p>
+    <h3>Zonas (${ZN.length})</h3>
+    <div class="list">${ZN.map((z, i) => `<div class="item" data-zi="${i}"><span class="ic" style="background:${ZCOL[z.k]};color:#000">${z.k}</span><span class="tx"><b>${esc(z.id)}</b><small>${esc(z.n || z.fir)} · ${esc(zLimits(z))}${z.g ? '' : ' · <b>sin dibujar: ver AIP</b>'}</small></span></div>`).join('')}</div>
+    <h3>Obstáculos y áreas de instrucción</h3>
+    <p class="note">${vacio('enr54') ? 'ENR 5.4 (obstáculos en ruta): el AIP vigente indica «No aplicable»; no hay obstáculos publicados para dibujar. ' : ''}${vacio('enr52') ? 'ENR 5.2 (áreas de maniobras e instrucción militar): «No aplicable»; las áreas de instrucción aparecen como zonas R o D de ENR 5.1 (ej. SC-R27, SC-D11). ' : ''}Los obstáculos de cada aeródromo figuran en su ficha/carta AIP y no están en esta capa.</p>`);
+  body.onclick = e => {
+    const it = e.target.closest('[data-zi]'); if (!it) return;
+    const z = ZN[+it.dataset.zi]; if (!z.g) { window.open(EA.fuente, '_blank', 'noopener'); return; }
+    closeModal(); showView('v-mapa');
+    setTimeout(() => { MAP.map.invalidateSize(); MAP.map.fitBounds([[z.bb[0], z.bb[1]], [z.bb[2], z.bb[3]]], { maxZoom: 11, padding: [40, 40] }); }, 80);
+  };
+}
 
 /* ------------------------------------------------------------------ AERÓDROMOS */
 $('#ad-reg').innerHTML += REGIONES.map(r => `<option>${esc(r)}</option>`).join('');
@@ -827,6 +926,18 @@ function renderNav() {
   setT('t-gs', NAV.gs != null ? num(NAV.gs) : '—');
   setT('t-alt', NAV.alt != null ? num(Math.round(NAV.alt / 10) * 10) : '—');
   const tt = TERR.get(NAV.route), lm = tt && !NAV.direct ? tt.legs[NAV.idx - 1] : null;
+  const zk = pos0 => {
+    if (!pos0) return '';
+    return zonesAt(pos0).map(z => { const v = NAV.alt != null ? zVert(z, NAV.alt) : null; return `${z.id}|${v}`; }).join(',');
+  };
+  const zkey = zk(NAV.pos);
+  if (zkey !== MAP.zkey) {
+    MAP.zkey = zkey;
+    $('#nav-zone').innerHTML = zkey ? zonesAt(NAV.pos).map(z => {
+      const v = NAV.alt != null ? zVert(z, NAV.alt) : null;
+      return `<div class="alert ${v === false ? 'ok' : z.k === 'P' ? 'bad' : 'warn'}">Dentro de ${esc(z.id)} (${ZNOM[z.k]}${z.n ? ' · ' + esc(z.n) : ''}) · ${esc(zLimits(z))}${v === false ? ' · tu altitud está fuera de los límites' : ''}</div>`;
+    }).join('') : '';
+  }
   setT('t-msa', lm ? num(lm.msa) : '—');
   $('#t-msa').parentElement.classList.toggle('low', !!(lm && NAV.alt != null && NAV.alt < lm.msa));
   setT('t-trk', NAV.trk != null ? hdg(NAV.trk - mv) : '—');

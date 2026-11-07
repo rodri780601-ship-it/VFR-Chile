@@ -140,6 +140,9 @@ table.fc{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numer
 .map-legend{position:absolute;left:10px;bottom:10px;z-index:500;background:rgba(11,19,32,.88);border:1px solid var(--line);border-radius:10px;padding:6px 9px;font-size:11.5px;display:flex;gap:9px;flex-wrap:wrap;max-width:calc(100% - 20px)}
 .map-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:499;background:rgba(11,19,32,.85);font-size:12px;padding:5px 10px;border-radius:99px;color:var(--muted);pointer-events:none;transition:opacity .6s}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:0}
+.sq{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;border:2px solid;box-sizing:border-box}
+.z-P{border-color:#ef4444;background:rgba(239,68,68,.35)}.z-R{border-color:#f97316;background:rgba(249,115,22,.3)}.z-D{border-color:#eab308;background:rgba(234,179,8,.3)}
+#nav-zone .alert{margin:6px 0 0}
 .c-pub{background:var(--pub)}.c-pvt{background:var(--pvt)}.c-mil{background:var(--mil)}.c-hlp{background:var(--hlp)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel);color:var(--text);border:1px solid var(--line)}
 .leaflet-popup-content{margin:12px 14px;min-width:220px}
@@ -147,6 +150,7 @@ table.fc{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numer
 .pop .muted{margin-bottom:8px}
 .pop .pbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
 .pop .pbtns button{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px;font-size:12.5px;cursor:pointer;font-weight:600}
+.pop .pbtns a{grid-column:1/-1;text-align:center;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px;font-size:12.5px;font-weight:600;color:inherit;text-decoration:none}
 .pop .pbtns button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .leaflet-control-attribution{background:rgba(11,19,32,.7)!important;color:var(--muted)!important;font-size:10px}
 .leaflet-control-attribution a{color:var(--muted)!important}
