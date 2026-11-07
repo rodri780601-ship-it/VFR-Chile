@@ -1,0 +1,31 @@
+{
+  "id": "./",
+  "name": "VFR Chile · Planificador de vuelo",
+  "short_name": "VFR Chile",
+  "description": "Planificación de vuelos VFR en Chile para pilotos civiles: aeródromos del AIP, rutas y navlog, METAR/TAF, pronóstico y parámetros de vuelo GPS en tiempo real.",
+  "lang": "es-CL",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0b1320",
+  "theme_color": "#0b1320",
+  "categories": ["navigation", "travel", "utilities", "weather"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "screenshots/plan.png", "sizes": "800x1720", "type": "image/png", "form_factor": "narrow", "label": "Plan de vuelo y navlog" },
+    { "src": "screenshots/vuelo.png", "sizes": "800x1720", "type": "image/png", "form_factor": "narrow", "label": "Parámetros de vuelo en tiempo real" },
+    { "src": "screenshots/aerodromo.png", "sizes": "800x1720", "type": "image/png", "form_factor": "narrow", "label": "Ficha de aeródromo del AIP" }
+  ],
+  "shortcuts": [
+    { "name": "Plan de vuelo", "url": "./#plan", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Meteorología", "url": "./#meteo", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Modo vuelo", "url": "./#vuelo", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

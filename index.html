@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>VFR Chile · Planificador de vuelo</title>
+  <meta name="description" content="Planificación de vuelos VFR en Chile: aeródromos del AIP, rutas, navlog, meteorología y parámetros de vuelo en tiempo real.">
+  <meta name="theme-color" content="#0b1320">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VFR Chile">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" class="brand-ico" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg>
+      <span>VFR Chile</span>
+    </div>
+    <div class="top-actions">
+      <span id="net-pill" class="pill">En línea</span>
+      <span id="gps-pill" class="pill off">GPS</span>
+      <button id="btn-install" class="pill btn-pill hidden" type="button">Instalar</button>
+      <button id="btn-info" class="icon-btn" type="button" aria-label="Información">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6M12 7.5v.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- MAPA -->
+    <section id="v-mapa" class="view active">
+      <div id="map"></div>
+      <div class="map-tools">
+        <button id="map-gps" class="fab" type="button" title="Centrar en mi posición">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+        <button id="map-route" class="fab" type="button" title="Ver ruta completa">
+          <svg viewBox="0 0 24 24"><path d="M5 19 L10 8 L15 14 L19 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>
+        </button>
+        <button id="map-metar" class="fab" type="button" title="METAR en el área visible">
+          <svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 18z" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        </button>
+        <button id="map-layers" class="fab" type="button" title="Capas y filtros">
+          <svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5zM2 13l10 5 10-5M2 17.5l10 5 10-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="map-legend">
+        <span><i class="dot c-pub"></i>Público</span>
+        <span><i class="dot c-pvt"></i>Privado</span>
+        <span><i class="dot c-mil"></i>Militar</span>
+        <span><i class="dot c-hlp"></i>Helipuerto</span>
+      </div>
+      <div class="map-hint">Mantén presionado el mapa para crear un punto de ruta</div>
+    </section>
+
+    <!-- PLAN -->
+    <section id="v-plan" class="view scroll">
+      <div class="card">
+        <div class="card-head"><h2>Ruta</h2><span id="route-sum" class="muted"></span></div>
+        <div class="field"><label>Origen</label><button class="picker" data-role="dep" type="button"></button></div>
+        <div id="wp-list"></div>
+        <button id="add-wp" class="btn ghost small" type="button">+ Punto intermedio</button>
+        <div class="field"><label>Destino</label><button class="picker" data-role="dest" type="button"></button></div>
+        <div class="field"><label>Alternativa</label><button class="picker" data-role="alt" type="button"></button></div>
+        <div class="grid2">
+          <div class="field"><label for="p-cruise">Altitud crucero (ft)</label><input id="p-cruise" type="number" inputmode="numeric" step="500" min="500"></div>
+          <div class="field"><label for="p-dep">Salida (hora local)</label><input id="p-dep" type="datetime-local"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Aeronave y combustible</h2></div>
+        <div class="grid2">
+          <div class="field"><label for="ac-reg">Matrícula</label><input id="ac-reg" type="text" placeholder="CC-XXX" autocapitalize="characters"></div>
+          <div class="field"><label for="ac-type">Tipo</label><input id="ac-type" type="text" placeholder="C172"></div>
+          <div class="field"><label for="ac-tas">TAS crucero (kt)</label><input id="ac-tas" type="number" inputmode="decimal"></div>
+          <div class="field"><label for="ac-ff">Consumo por hora</label><input id="ac-ff" type="number" inputmode="decimal"></div>
+          <div class="field"><label for="ac-unit">Unidad</label><select id="ac-unit"><option value="L">Litros</option><option value="gal">Galones US</option></select></div>
+          <div class="field"><label for="ac-fuel">Combustible a bordo</label><input id="ac-fuel" type="number" inputmode="decimal"></div>
+          <div class="field"><label for="ac-taxi">Rodaje / arranque</label><input id="ac-taxi" type="number" inputmode="decimal"></div>
+          <div class="field"><label for="ac-res">Reserva (min)</label><input id="ac-res" type="number" inputmode="numeric"></div>
+          <div class="field"><label for="ac-var">Variación magnética (° E +, W −)</label><input id="ac-var" type="number" inputmode="decimal" step="0.5"></div>
+        </div>
+        <p class="note">Verifica la variación magnética en tu carta. Este valor se aplica a toda la ruta.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Navlog</h2>
+          <button id="wind-fc" class="btn small" type="button">Viento pronosticado</button>
+        </div>
+        <div id="navlog"></div>
+        <div id="totals"></div>
+        <div id="warnings"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Acciones</h2></div>
+        <div class="btn-grid">
+          <button id="act-fly" class="btn primary" type="button">Iniciar navegación</button>
+          <button id="act-map" class="btn" type="button">Ver en mapa</button>
+          <button id="act-wx" class="btn" type="button">Meteo de la ruta</button>
+          <button id="act-share" class="btn" type="button">Compartir briefing</button>
+          <button id="act-gpx" class="btn" type="button">Exportar GPX</button>
+          <button id="act-save" class="btn" type="button">Guardar plan</button>
+          <button id="act-reverse" class="btn" type="button">Invertir ruta</button>
+          <button id="act-new" class="btn danger" type="button">Nuevo plan</button>
+        </div>
+        <h3>Planes guardados</h3>
+        <div id="saved-list" class="list"></div>
+      </div>
+    </section>
+
+    <!-- METEO -->
+    <section id="v-meteo" class="view scroll">
+      <div class="card">
+        <div class="card-head"><h2>METAR / TAF</h2><span id="wx-time" class="muted"></span></div>
+        <form id="wx-form" class="search-row">
+          <input id="wx-ids" type="text" placeholder="SCEL SCTB SCVM" autocapitalize="characters" autocomplete="off">
+          <button class="btn primary" type="submit">Consultar</button>
+        </form>
+        <div id="wx-chips" class="chips"></div>
+        <div id="wx-results"></div>
+        <p class="note">Fuente: aviationweather.gov (NOAA). Solo aeródromos con estación METAR. Para el briefing oficial usa IFIS de la DGAC.</p>
+        <div class="links">
+          <a href="https://aipchile.dgac.gob.cl/metar" target="_blank" rel="noopener">METAR DGAC</a>
+          <a href="https://aipchile.dgac.gob.cl/notam" target="_blank" rel="noopener">NOTAM DGAC</a>
+          <a href="https://aipchile.dgac.gob.cl/camara/" target="_blank" rel="noopener">Cámaras DGAC</a>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Pronóstico por aeródromo</h2></div>
+        <div class="field"><label>Aeródromo</label><button class="picker" data-role="wxad" type="button"></button></div>
+        <div id="fc-sun"></div>
+        <div id="fc-results"></div>
+        <p class="note">Pronóstico de modelo numérico (Open-Meteo), no es un TAF. Úsalo como orientación.</p>
+      </div>
+    </section>
+
+    <!-- VUELO -->
+    <section id="v-vuelo" class="view scroll">
+      <div class="nav-bar">
+        <button id="nav-toggle" class="btn primary" type="button">Iniciar GPS</button>
+        <button id="nav-sim" class="btn" type="button">Simular</button>
+        <button id="nav-direct" class="btn" type="button">Directo a</button>
+        <button id="nav-nearest" class="btn warn" type="button">Más cercanos</button>
+      </div>
+      <div id="nav-target" class="nav-target">Sin destino activo</div>
+      <div class="instr-wrap">
+        <svg id="hsi" viewBox="-110 -110 220 220" aria-label="Indicador de rumbo"></svg>
+      </div>
+      <div class="tiles">
+        <div class="tile big"><span>GS</span><b id="t-gs">—</b><i>kt</i></div>
+        <div class="tile big"><span>ALT GPS</span><b id="t-alt">—</b><i>ft</i></div>
+        <div class="tile big"><span>TRK</span><b id="t-trk">—</b><i>° M</i></div>
+        <div class="tile"><span>V/S</span><b id="t-vs">—</b><i>ft/min</i></div>
+        <div class="tile"><span>DIST WPT</span><b id="t-dwp">—</b><i>NM</i></div>
+        <div class="tile"><span>BRG WPT</span><b id="t-bwp">—</b><i>° M</i></div>
+        <div class="tile"><span>ETE WPT</span><b id="t-ewp">—</b><i>h:mm</i></div>
+        <div class="tile"><span>DTK</span><b id="t-dtk">—</b><i>° M</i></div>
+        <div class="tile"><span>XTK</span><b id="t-xtk">—</b><i>NM</i></div>
+        <div class="tile"><span>DIST DEST</span><b id="t-dds">—</b><i>NM</i></div>
+        <div class="tile"><span>ETA DEST</span><b id="t-eta">—</b><i>local</i></div>
+        <div class="tile"><span>COMBUSTIBLE</span><b id="t-fuel">—</b><i id="t-fuel-u">L</i></div>
+        <div class="tile"><span>T. VUELO</span><b id="t-time">—</b><i>h:mm</i></div>
+        <div class="tile"><span>ENDURANCE</span><b id="t-end">—</b><i>h:mm</i></div>
+        <div class="tile"><span>PRECISIÓN</span><b id="t-acc">—</b><i>m</i></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Ruta activa</h2><button id="nav-gpx" class="btn small" type="button">Exportar traza GPX</button></div>
+        <div id="nav-legs" class="list"></div>
+      </div>
+      <p class="note pad">Altitud y velocidad provienen del GPS del teléfono: son referenciales y pueden diferir del altímetro y el anemómetro. No reemplaza los instrumentos de la aeronave.</p>
+    </section>
+
+    <!-- AERODROMOS -->
+    <section id="v-ad" class="view scroll">
+      <div class="card sticky">
+        <div class="search-row">
+          <input id="ad-q" type="search" placeholder="Buscar nombre, OACI o región" autocomplete="off">
+        </div>
+        <div class="filters">
+          <select id="ad-type"><option value="">Todos los tipos</option><option value="C">Civiles</option><option value="M">Militares</option><option value="H">Helipuertos</option></select>
+          <select id="ad-use"><option value="">Público y privado</option><option value="1">Uso público</option><option value="0">Uso privado</option></select>
+          <select id="ad-reg"><option value="">Todas las regiones</option></select>
+          <label class="chk"><input id="ad-near" type="checkbox"> Por cercanía</label>
+        </div>
+        <div id="ad-count" class="muted"></div>
+      </div>
+      <div id="ad-list" class="list"></div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="v-mapa" class="active" type="button"><svg viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Mapa</span></button>
+    <button data-view="v-plan" type="button"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z M14 3v5h5 M9 12h7M9 16h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Plan</span></button>
+    <button data-view="v-meteo" type="button"><svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 18z" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Meteo</span></button>
+    <button data-view="v-vuelo" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 12 16 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6"/></svg><span>Vuelo</span></button>
+    <button data-view="v-ad" type="button"><svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></svg><span>Aeródromos</span></button>
+  </nav>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="sheet">
+      <div class="sheet-head"><h3 id="modal-title"></h3><button id="modal-close" class="icon-btn" type="button" aria-label="Cerrar">✕</button></div>
+      <div id="modal-body" class="sheet-body"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <script src="data/aerodromos.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
