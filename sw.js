@@ -1,5 +1,5 @@
 /* Service worker de VFR Chile: app disponible sin conexión + caché de teselas de mapa vistas. */
-const VERSION = 'vfrchile-v1.0.2';
+const VERSION = 'vfrchile-v1.0.4';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'data/aerodromos.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png'];
 const CDN = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];

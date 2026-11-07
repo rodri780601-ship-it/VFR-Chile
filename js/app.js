@@ -450,6 +450,23 @@ $('#saved-list').onclick = e => {
   const it = e.target.closest('[data-i]'); if (!it) return;
   S.plan = deepMerge(structuredClone(DEF.plan), structuredClone(S.saved[+it.dataset.i].plan)); S.plan.depTime = defaultDep(); fillForm(); planChanged(); toast('Plan cargado (hora de salida actualizada)');
 };
+/* planes de ejemplo: se cargan con un toque y se recorren con "Simular" (10×) */
+const EJEMPLOS = [
+  { name: 'Santiago → Viña del Mar', desc: 'Cruce de la Cordillera de la Costa · terreno alto, ideal para ver la altitud mínima', cruise: 7500, dep: 'SCTB', dest: 'SCVM', alt: 'SCSN', winds: ['270/10'] },
+  { name: 'Santiago → Rancagua', desc: 'Vuelo corto por el Valle Central (~50 NM) · prueba rápida', cruise: 5500, dep: 'SCTB', dest: 'SCRG', alt: null, winds: [] },
+  { name: 'Santiago → Chillán vía Rancagua', desc: 'Ruta larga con un punto intermedio y alternativa en Concepción', cruise: 6500, dep: 'SCTB', wps: ['SCRG'], dest: 'SCCH', alt: 'SCIE', winds: ['180/8', '200/12'] }
+];
+function renderExamples() {
+  $('#examples').innerHTML = EJEMPLOS.map((x, i) => `<div class="item" data-ex="${i}"><span class="tx"><b>${esc(x.name)}</b><small>${esc(x.desc)}</small></span><button class="mini" data-sim="${i}" type="button" aria-label="Cargar y simular" title="Cargar y simular">▶</button></div>`).join('');
+}
+$('#examples').onclick = e => {
+  const it = e.target.closest('[data-ex]'); if (!it) return;
+  const x = EJEMPLOS[+it.dataset.ex], sim = !!e.target.closest('[data-sim]'), ref = i => i ? { i } : null;
+  if (NAV.on) NAV.stop();
+  S.plan = deepMerge(structuredClone(DEF.plan), { dep: ref(x.dep), wps: (x.wps || []).map(ref), dest: ref(x.dest), alt: ref(x.alt), cruise: x.cruise, winds: x.winds.map(parseWind) });
+  S.plan.depTime = defaultDep(); fillForm(); planChanged(); toast('Ejemplo cargado: ' + x.name);
+  if (sim) { NAV.simulate(); if (!TERR.get(NAV.route)) TERR.run(); }
+};
 function routeAdIds() { return [...new Set([S.plan.dep, ...S.plan.wps, S.plan.dest, S.plan.alt].filter(p => p && p.i).map(p => p.i))]; }
 
 function briefingText() {
@@ -640,8 +657,19 @@ const MAP = {
   focus(a) { if (this.map && a.la != null) { setTimeout(() => { this.map.invalidateSize(); this.map.setView([a.la, a.lo], 12); }, 80); } },
   updateOwn(pos, trk) {
     if (!this.map || !pos) return;
-    const html = `<div class="ownship" style="transform:rotate(${trk || 0}deg)"><svg viewBox="0 0 24 24"><path d="M12 1.5 14 9l8 4v2l-8-2 .3 6 2.7 2v1.5l-5-1.2-5 1.2V21l2.7-2 .3-6-8 2v-2l8-4z"/></svg></div>`;
-    const icon = L.divIcon({ className: '', html, iconSize: [34, 34], iconAnchor: [17, 17] });
+    const html = `<div class="ownship" style="transform:rotate(${trk || 0}deg)"><svg viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="22" fill="#5fd3ff" fill-opacity=".14" stroke="#5fd3ff" stroke-opacity=".5" stroke-width="1"/>
+      <path d="M3.5 21.5 24 18.5 44.5 21.5V26L24 24.6 3.5 26Z" fill="#f5b301" stroke="#1a1a1a" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M3.5 21.5v4.5M44.5 21.5v4.5" stroke="#d93025" stroke-width="2.2"/>
+      <path d="M15 40.5 24 39l9 1.5V44l-9-.9-9 .9Z" fill="#f5b301" stroke="#1a1a1a" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M24 4.5c2.6 0 3.4 3.4 3.4 7.5l-.9 24.5-1.3 8h-2.4l-1.3-8L20.6 12c0-4.1.8-7.5 3.4-7.5Z" fill="#fff" stroke="#1a1a1a" stroke-width="1" stroke-linejoin="round"/>
+      <path d="M24 38v6" stroke="#9aa5b1" stroke-width="1"/>
+      <path d="M22 14.2c.5-1.6 1.2-2.2 2-2.2s1.5.6 2 2.2l-.5 5.3h-3Z" fill="#3b82c4" stroke="#1a1a1a" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M12 22.5l8-3.6M36 22.5l-8-3.6" stroke="#1a1a1a" stroke-width=".8" opacity=".7"/>
+      <ellipse cx="24" cy="4.2" rx="10.5" ry="1.1" fill="#1a1a1a" fill-opacity=".45"/>
+      <circle cx="24" cy="5" r="1.4" fill="#d93025" stroke="#1a1a1a" stroke-width=".6"/>
+    </svg></div>`;
+    const icon = L.divIcon({ className: '', html, iconSize: [48, 48], iconAnchor: [24, 24] });
     if (!this.own) this.own = L.marker([pos.la, pos.lo], { icon, interactive: false, zIndexOffset: 1000 }).addTo(this.map);
     else { this.own.setLatLng([pos.la, pos.lo]); this.own.setIcon(icon); }
     if (this.follow) this.map.panTo([pos.la, pos.lo], { animate: false });
@@ -885,7 +913,7 @@ function firstRun() {
 }
 
 /* ------------------------------------------------------------------ inicio */
-fillForm(); renderPickers(); renderWps(); renderNavlog(); renderSaved(); renderWxChips(); renderAdList();
+fillForm(); renderPickers(); renderWps(); renderNavlog(); renderSaved(); renderExamples(); renderWxChips(); renderAdList();
 MAP.init(); renderNav(); firstRun();
 { const v = { '#plan': 'v-plan', '#meteo': 'v-meteo', '#vuelo': 'v-vuelo', '#aerodromos': 'v-ad' }[location.hash]; if (v) showView(v); }
 setInterval(() => { renderWxChips(); if (NAV.on && $('#v-vuelo').classList.contains('active')) renderNav(); }, 30000);
