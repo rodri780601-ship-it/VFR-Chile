@@ -309,7 +309,7 @@ function computePlan() {
 function renderNavlog() {
   const c = computePlan(), u = S.ac.unit;
   const sum = $('#route-sum');
-  if (!c) { $('#navlog').innerHTML = '<p class="muted">Elige origen y destino para calcular el navlog.</p>'; $('#totals').innerHTML = ''; $('#warnings').innerHTML = ''; sum.textContent = ''; return; }
+  if (!c) { $('#navlog').innerHTML = '<p class="muted">Elige origen y destino para calcular el navlog.</p>'; $('#totals').innerHTML = ''; $('#warnings').innerHTML = ''; sum.textContent = ''; renderTerr(null); return; }
   sum.textContent = `${num(c.dist)} NM · ${hmm(c.ete)}`;
   $('#navlog').innerHTML = `<div class="tbl-wrap"><table class="navlog"><thead><tr>
     <th>Tramo</th><th>TC</th><th>Dist</th><th>Viento °/kt</th><th>WCA</th><th>MH</th><th>GS</th><th>ETE</th><th>ETA</th><th>Comb.</th></tr></thead><tbody>
@@ -352,6 +352,7 @@ function renderNavlog() {
   const cr = +S.plan.cruise || 0, maxE = Math.max(...c.pts.map(p => p.e || 0));
   if (cr && cr < maxE + 1000) W.push(['warn', `La altitud de crucero (${num(cr)} ft) es baja respecto de la elevación de los aeródromos de la ruta (${num(maxE)} ft). Revisa el terreno en la carta.`]);
   $('#warnings').innerHTML = W.map(([k, t]) => `<div class="alert ${k}">${esc(t)}</div>`).join('');
+  renderTerr(c);
 }
 
 /* viento pronosticado en altura (Open-Meteo) para el punto medio de cada tramo */
@@ -377,8 +378,60 @@ $('#wind-fc').onclick = async () => {
   btn.disabled = false; btn.textContent = 'Viento pronosticado';
 };
 
+/* terreno y altitud mínima de seguridad (relieve DEM de Open-Meteo, el mismo SRTM que muestra el mapa topográfico) */
+const TERR = {
+  half: 5, // semiancho del corredor (NM)
+  key(pts) { return pts.map(p => p.la.toFixed(3) + ',' + p.lo.toFixed(3)).join('|'); },
+  clearance(h) { return h > 5000 ? 2000 : 1000; }, // margen sobre el punto más alto: 1000 ft, 2000 ft en terreno montañoso
+  msa(h) { return Math.ceil((h + this.clearance(h)) / 500) * 500; },
+  get(pts) { const t = S.terr; return t && pts && pts.length > 1 && t.key === this.key(pts) ? t : null; },
+  async compute(c) {
+    const sp = Math.max(4, c.dist / 150), pts = [];
+    c.legs.forEach((l, i) => {
+      const n = Math.max(1, Math.ceil(l.d / sp)), br = (l.tc + 90) * Math.PI / 180;
+      for (let k = 0; k <= n; k++) {
+        const m = interp(l.a, l.b, k / n), cl = Math.max(.2, Math.cos(m.la * Math.PI / 180));
+        for (const off of [0, -this.half, this.half]) pts.push({ leg: i, la: m.la + off * Math.cos(br) / 60, lo: m.lo + off * Math.sin(br) / 60 / cl });
+      }
+    });
+    const el = [];
+    for (let i = 0; i < pts.length; i += 100) {
+      const ch = pts.slice(i, i + 100);
+      el.push(fetchJSON(`https://api.open-meteo.com/v1/elevation?latitude=${ch.map(p => p.la.toFixed(4)).join(',')}&longitude=${ch.map(p => p.lo.toFixed(4)).join(',')}`).then(j => j.elevation));
+    }
+    const E = (await Promise.all(el)).flat();
+    const legs = c.legs.map(() => ({ max: -Infinity, la: 0, lo: 0 }));
+    pts.forEach((p, i) => { const h = E[i] * 3.28084; if (isFinite(h) && h > legs[p.leg].max) legs[p.leg] = { max: h, la: p.la, lo: p.lo }; });
+    if (legs.some(l => !isFinite(l.max))) throw new Error('sin datos');
+    legs.forEach(l => { l.max = Math.round(l.max); l.msa = this.msa(l.max); });
+    const top = legs.reduce((b, l) => l.max > b.max ? l : b);
+    return S.terr = { key: this.key(c.pts), legs, max: top.max, msa: this.msa(top.max), la: top.la, lo: top.lo };
+  },
+  async run(btn) {
+    const c = computePlan(); if (!c) return toast('Primero define la ruta');
+    if (btn) { btn.disabled = true; btn.textContent = 'Consultando relieve…'; }
+    try { await this.compute(c); save(); renderNavlog(); renderNav(); }
+    catch (e) { toast('No se pudo obtener el relieve (requiere conexión)'); if (btn) { btn.disabled = false; btn.textContent = 'Calcular altura mínima'; } }
+  }
+};
+function renderTerr(c) {
+  const el = $('#terr'); if (!el) return;
+  if (!c) { el.innerHTML = ''; return; }
+  const t = TERR.get(c.pts), cr = +S.plan.cruise || 0;
+  if (!t) { el.innerHTML = `<div class="card-head"><h3>Altitud mínima de seguridad</h3><button id="terr-go" class="btn small primary" type="button">Calcular altura mínima</button></div><p class="note">Analiza el relieve de la ruta (corredor ±${TERR.half} NM) y recomienda una altitud mínima.</p>`; $('#terr-go').onclick = e => TERR.run(e.target); return; }
+  const cl = TERR.clearance(t.max);
+  el.innerHTML = `<div class="card-head"><h3>Altitud mínima de seguridad</h3><button id="terr-go" class="btn small" type="button">Recalcular</button></div>
+    <div class="alert ${cr && cr < t.msa ? 'bad' : 'ok'}">Altitud mínima recomendada: <b>${num(t.msa)} ft</b> (terreno más alto ${num(t.max)} ft + ${num(cl)} ft de margen). ${cr ? (cr < t.msa ? `Tu crucero de ${num(cr)} ft es INSUFICIENTE.` : `Tu crucero de ${num(cr)} ft cumple.`) : ''}</div>
+    ${cr && cr < t.msa ? `<button id="terr-apply" class="btn small" type="button" style="margin-top:8px">Usar ${num(t.msa)} ft como crucero</button>` : ''}
+    <div class="tbl-wrap"><table class="navlog"><thead><tr><th>Tramo</th><th>Terreno máx (ft)</th><th>Mínima (ft)</th></tr></thead><tbody>
+    ${c.legs.map((l, i) => `<tr><td><b>${esc(l.a.id)}</b> → <b>${esc(l.b.id)}</b></td><td>${num(t.legs[i].max)}</td><td><b>${num(t.legs[i].msa)}</b></td></tr>`).join('')}</tbody></table></div>
+    <p class="note">Altitud sobre el nivel del mar (MSL). Margen: 1000 ft sobre el punto más alto del corredor, 2000 ft si supera 5000 ft; redondeo a 500 ft. El relieve (modelo digital de ~90 m) no incluye torres, antenas ni cables, y puede subestimar picos agudos. Contrasta siempre con las cartas oficiales y considera nubes, viento y turbulencia de montaña.</p>`;
+  $('#terr-go').onclick = e => TERR.run(e.target);
+  const ap = $('#terr-apply'); if (ap) ap.onclick = () => { S.plan.cruise = t.msa; $('#p-cruise').value = t.msa; save(); renderNavlog(); };
+}
+
 /* acciones */
-$('#act-fly').onclick = () => { if (!routeValid()) return toast('Define origen y destino'); NAV.loadRoute(); showView('v-vuelo'); if (!NAV.on) NAV.start(); };
+$('#act-fly').onclick = () => { if (!routeValid()) return toast('Define origen y destino'); NAV.loadRoute(); showView('v-vuelo'); if (!NAV.on) NAV.start(); if (!TERR.get(NAV.route)) TERR.run(); };
 $('#act-map').onclick = () => { showView('v-mapa'); MAP.fitRoute(); };
 $('#act-wx').onclick = () => { const ids = routeAdIds(); if (!ids.length) return toast('Sin aeródromos en la ruta'); showView('v-meteo'); $('#wx-ids').value = ids.join(' '); loadMetar(ids); };
 $('#act-reverse').onclick = () => { const P = S.plan; [P.dep, P.dest] = [P.dest, P.dep]; P.wps.reverse(); P.winds = []; planChanged(); toast('Ruta invertida'); };
@@ -745,6 +798,9 @@ function renderNav() {
   const pos = NAV.pos, tgt = NAV.target(), from = NAV.legFrom();
   setT('t-gs', NAV.gs != null ? num(NAV.gs) : '—');
   setT('t-alt', NAV.alt != null ? num(Math.round(NAV.alt / 10) * 10) : '—');
+  const tt = TERR.get(NAV.route), lm = tt && !NAV.direct ? tt.legs[NAV.idx - 1] : null;
+  setT('t-msa', lm ? num(lm.msa) : '—');
+  $('#t-msa').parentElement.classList.toggle('low', !!(lm && NAV.alt != null && NAV.alt < lm.msa));
   setT('t-trk', NAV.trk != null ? hdg(NAV.trk - mv) : '—');
   setT('t-vs', NAV.alt != null && NAV.prevT ? (Math.abs(NAV.vs) < 50 ? '0' : (NAV.vs > 0 ? '+' : '') + num(Math.round(NAV.vs / 10) * 10)) : '—');
   setT('t-acc', NAV.acc != null ? num(NAV.acc) : '—');

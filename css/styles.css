@@ -166,6 +166,8 @@ table.fc{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numer
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 8px;display:flex;flex-direction:column;min-width:0}
 .tile span{font-size:10.5px;color:var(--muted);letter-spacing:.5px;font-weight:600}
 .tile b{font-size:21px;color:var(--data);font-variant-numeric:tabular-nums;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.low{background:#2a1515;border-color:#b3261e}
+.tile.low b,.tile.low span{color:#ffc2c2}
 .tile.big b{font-size:28px;color:#fff}
 .tile i{font-style:normal;font-size:10.5px;color:var(--muted)}
 
